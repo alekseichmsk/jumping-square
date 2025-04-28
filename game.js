@@ -114,8 +114,11 @@ function drawAuthButtons() {
 canvas.addEventListener('click', (e) => {
   if (!auth.currentUser) {
     const rect = canvas.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const clickY = e.clientY - rect.top;
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const clickX = (e.clientX - rect.left) * scaleX;
+    const clickY = (e.clientY - rect.top) * scaleY;
+
     const btnWidth = Math.min(380, canvas.width * 0.9);
     const btnHeight = 64;
     authButtons.forEach((btn) => {
@@ -506,13 +509,45 @@ function setupEventListeners() {
     // Обработчик клика для рестарта игры, паузы и выхода
     canvas.addEventListener('click', (e) => {
         const rect = canvas.getBoundingClientRect();
-        const clickX = e.clientX - rect.left;
-        const clickY = e.clientY - rect.top;
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const clickX = (e.clientX - rect.left) * scaleX;
+        const clickY = (e.clientY - rect.top) * scaleY;
 
-        // Проверяем клик по надписи выхода
+        // Если открыто окно подтверждения выхода
+        if (showLogoutConfirm) {
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2 + 40;
+            // Кнопка 'Да'
+            if (
+                clickX >= cx - 60 - 28 && clickX <= cx - 60 + 28 &&
+                clickY >= cy + 40 - 18 && clickY <= cy + 40 + 18
+            ) {
+                showLogoutConfirm = false;
+                auth.signOut().then(() => {
+                    location.reload();
+                }).catch((error) => {
+                    alert('Ошибка при выходе: ' + error.message);
+                });
+                return;
+            }
+            // Кнопка 'Нет'
+            if (
+                clickX >= cx + 60 - 28 && clickX <= cx + 60 + 28 &&
+                clickY >= cy + 40 - 18 && clickY <= cy + 40 + 18
+            ) {
+                showLogoutConfirm = false;
+                return;
+            }
+            // Клик вне кнопок — ничего не делаем
+            return;
+        }
+
+        // Проверяем клик по надписи выхода (используем масштабированные координаты)
         if (isPaused && auth.currentUser && handleLogoutClick(clickX, clickY)) {
             showLogoutConfirm = true;
             drawLogoutConfirm();
+            requestAnimationFrame(gameLoop); // чтобы цикл не останавливался
             return;
         }
 
@@ -687,54 +722,59 @@ function restart() {
 
 // Основной игровой цикл
 function gameLoop() {
-    if (isGameOver || isPaused) {
-        // Затемнение
-        if (isPaused) {
-            ctx.fillStyle = 'rgba(0,0,0,0.5)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            // Кнопка play (белый круг с тенью и треугольник)
-            ctx.save();
-            const cx = canvas.width / 2;
-            const cy = canvas.height / 2;
-            const r = 60;
-            // Круг
-            ctx.globalAlpha = 0.9;
-            ctx.beginPath();
-            ctx.arc(cx, cy, r, 0, Math.PI * 2);
-            ctx.fillStyle = '#fff';
-            ctx.shadowColor = '#000';
-            ctx.shadowBlur = 16;
-            ctx.fill();
-            ctx.globalAlpha = 1.0;
-            ctx.shadowBlur = 0;
-            // Треугольник ▶
-            ctx.beginPath();
-            ctx.moveTo(cx - 18, cy - 30);
-            ctx.lineTo(cx + 32, cy);
-            ctx.lineTo(cx - 18, cy + 30);
-            ctx.closePath();
-            ctx.fillStyle = '#222';
-            ctx.fill();
-            ctx.restore();
-            // Надпись 'Пауза'
-            ctx.save();
-            ctx.font = 'bold 36px Arial';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'top';
-            ctx.shadowColor = '#000';
-            ctx.shadowBlur = 8;
-            ctx.fillStyle = '#fff';
-            ctx.fillText('Пауза', cx, cy + r + 24);
-            ctx.restore();
-            // Кнопка выхода только в паузе
-            if (auth.currentUser) {
-                drawLogoutButton();
-                if (showLogoutConfirm) {
-                    drawLogoutConfirm();
-                    return;
-                }
-            }
+    ctx.clearRect(0, 0, canvas.width, canvas.height); // ОЧИСТКА ВСЕГДА!
+
+    if (isGameOver) {
+        showGameOver();
+        return;
+    }
+
+    if (isPaused) {
+        if (showLogoutConfirm) {
+            drawLogoutButton();
+            drawLogoutConfirm();
+            requestAnimationFrame(gameLoop);
+            return;
         }
+        // Обычный экран паузы с кнопкой play
+        // Затемнение
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        // Кнопка play (белый круг с тенью и треугольник)
+        ctx.save();
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+        const r = 60;
+        // Круг
+        ctx.globalAlpha = 0.9;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fillStyle = '#fff';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 16;
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+        ctx.shadowBlur = 0;
+        // Треугольник ▶
+        ctx.beginPath();
+        ctx.moveTo(cx - 18, cy - 30);
+        ctx.lineTo(cx + 32, cy);
+        ctx.lineTo(cx - 18, cy + 30);
+        ctx.closePath();
+        ctx.fillStyle = '#222';
+        ctx.fill();
+        ctx.restore();
+        // Надпись 'Пауза'
+        ctx.save();
+        ctx.font = 'bold 36px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 8;
+        ctx.fillStyle = '#fff';
+        ctx.fillText('Пауза', cx, cy + r + 24);
+        ctx.restore();
+        drawLogoutButton();
         return;
     }
 
