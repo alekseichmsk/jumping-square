@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com/ https://*.firebaseio.com https://*.googleapis.com; object-src 'none'">
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com/ https://*.firebaseio.com https://*.googleapis.com https://apis.google.com https://*.google.com https://*.firebase.com https://*.firebaseapp.com; object-src 'none'; connect-src 'self' https://*.firebaseio.com https://*.googleapis.com https://*.firebase.com https://*.firebaseapp.com">
     <title>jumping-square</title>
     <link rel="stylesheet" href="style.css">
 </head>
@@ -11,11 +11,12 @@
     <div id="gameContainer">
         <canvas id="gameCanvas" width="500" height="900"></canvas>
         <button id="fullscreenBtn" title="Полноэкранный режим"></button>
+        <button id="effectsBtn" title="Включить/выключить эффекты"></button>
     </div>
+    <script type="module" src="fullscreen.js"></script>
     <script type="module" src="heights.js"></script>
     <script type="module" src="backgrounds.js"></script>
     <script type="module" src="game.js"></script>
-    <script src="fullscreen.js"></script>
     <!-- Коллекция highscores появится автоматически при первой записи из игры. Создавать вручную не нужно! -->
 </body>
 </html> 

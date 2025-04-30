@@ -1,5 +1,3 @@
-import { getAchievementMessage } from './heights.js';
-
 // Функция для генерации случайного цвета в HSL
 function generateRandomHSL() {
     const hue = Math.floor(Math.random() * 360);
@@ -78,6 +76,15 @@ let nextBackgroundIndex = 1;
 let transitionProgress = 0;
 const TRANSITION_DISTANCE = 500; // Расстояние для перехода между фонами
 
+// Добавляем переменную для отслеживания состояния эффектов
+let effectsEnabled = false;
+
+// Функция для переключения эффектов
+function toggleEffects() {
+    effectsEnabled = !effectsEnabled;
+    return effectsEnabled;
+}
+
 // Функция для сброса состояния фона
 function resetBackgroundState() {
     currentBackgroundIndex = 0;
@@ -123,8 +130,41 @@ function updateBackground(meters) {
     return true;
 }
 
-// Функция для получения текущего градиента с учетом перехода
-function getCurrentGradient() {
+// Модифицируем функцию getCurrentGradient
+function getCurrentGradient(score = 0) {
+    if (!effectsEnabled) {
+        // Вычисляем текущий и следующий базовые цвета
+        const currentLayer = Math.floor(score / 250);
+        const nextLayer = currentLayer + 1;
+        const progress = (score % 250) / 250; // Прогресс перехода между слоями (0-1)
+
+        // Вычисляем цвета для текущего и следующего слоя
+        const currentHue = (currentLayer * 30) % 360;
+        const nextHue = (nextLayer * 30) % 360;
+
+        // Интерполируем цвета
+        const hue1 = currentHue + (nextHue - currentHue) * progress;
+        const hue2 = (hue1 + 20) % 360;
+
+        // Создаем градиент с плавным переходом
+        const color1 = `hsl(${hue1}, 50%, 50%)`;
+        const color2 = `hsl(${hue2}, 60%, 40%)`;
+
+        // Создаем градиент с несколькими промежуточными точками для более плавного перехода
+        const gradientSteps = 20;
+        const gradientColors = [];
+        
+        for (let i = 0; i <= gradientSteps; i++) {
+            const stepProgress = i / gradientSteps;
+            const hue = hue1 + (hue2 - hue1) * stepProgress;
+            const saturation = 50 + (60 - 50) * stepProgress;
+            const lightness = 50 + (40 - 50) * stepProgress;
+            gradientColors.push(`hsl(${hue}, ${saturation}%, ${lightness}%) ${stepProgress * 100}%`);
+        }
+        
+        return `linear-gradient(to bottom, ${gradientColors.join(', ')})`;
+    }
+
     const currentBg = backgrounds[currentBackgroundIndex];
     const nextBg = backgrounds[nextBackgroundIndex];
     
@@ -189,23 +229,6 @@ function getCurrentDustColor() {
     const currentBg = backgrounds[currentBackgroundIndex];
     const nextBg = backgrounds[nextBackgroundIndex];
     return interpolateHSLColor(currentBg.dust, nextBg.dust, transitionProgress);
-}
-
-// Функция для получения описания текущего слоя
-function getCurrentLayerDescription(currentScore) {
-    const meters = Math.floor(currentScore / 250) * 250;
-    const heightInfo = [
-        { min: 0, max: 250, description: "Высота 5-этажного дома (15м)" },
-        { min: 250, max: 500, description: "Высота Эйфелевой башни (300м)" },
-        { min: 500, max: 1000, description: "Высота Эмпайр-стейт-билдинг (443м)" },
-        { min: 1000, max: 2000, description: "Высота Бурдж-Халифа (828м)" },
-        { min: 2000, max: 5000, description: "Высота горы Эверест (8848м)" },
-        { min: 5000, max: 10000, description: "Высота полета пассажирского самолета (10000м)" },
-        { min: 10000, max: Infinity, description: "Высота полета космического корабля (100000м)" }
-    ];
-    
-    const info = heightInfo.find(item => meters >= item.min && meters < item.max);
-    return `Вы достигли ${meters} метров! ${info ? info.description : "Неизвестная высота"}`;
 }
 
 // Функция для генерации анимированного северного сияния
@@ -394,12 +417,12 @@ export {
     backgrounds, 
     getCurrentBackground, 
     updateBackground, 
-    getCurrentLayerDescription,
     getCurrentGradient,
     getCurrentPlatformColor,
     getCurrentPlayerColor,
     getCurrentDustColor,
     generateRandomBackground,
     resetBackgroundState,
-    getAchievementMessage
+    toggleEffects,
+    getNextBackground
 }; 

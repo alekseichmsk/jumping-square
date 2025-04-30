@@ -182,4 +182,34 @@ body {
 /* Скрываем кнопку в полноэкранном режиме */
 #gameContainer:fullscreen #fullscreenBtn {
     display: none !important;
+}
+
+#effectsBtn {
+    position: absolute;
+    top: 10px;
+    right: 60px;
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    cursor: pointer;
+    transition: background-color 0.3s;
+    z-index: 1000;
+}
+
+#effectsBtn:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+#effectsBtn::before {
+    content: "✨";
+    font-size: 20px;
+    line-height: 40px;
+    color: white;
+}
+
+#effectsBtn.disabled::before {
+    content: "🌟";
+    opacity: 0.5;
 } 
