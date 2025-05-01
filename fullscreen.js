@@ -69,4 +69,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Добавляем обработчик клика
     fullscreenBtn.addEventListener('click', toggleFullscreen);
-}); 
+});
+
+export { toggleFullscreen }; 

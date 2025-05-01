@@ -1,19 +1,28 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, OAuthProvider } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, OAuthProvider } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { 
     getCurrentBackground, 
     updateBackground, 
-    getCurrentLayerDescription,
     getCurrentGradient,
     getCurrentPlatformColor,
     getCurrentPlayerColor,
     getCurrentDustColor,
     backgrounds,
     generateRandomBackground,
-    resetBackgroundState
+    resetBackgroundState,
+    toggleEffects
 } from './backgrounds.js';
-import { getAchievementMessage } from './heights.js';
+import { 
+    getAchievementMessage,
+    getNextMessage,
+    updateMessageTimer,
+    getCurrentMessage,
+    resetMessages,
+    getMessageAlpha,
+    updateEmojiParticles,
+    clearEmojiParticles
+} from './heights.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyCGVzDuGvlNrWwwq-IoOoiqT8uqdXEWs3c",
@@ -148,7 +157,11 @@ canvas.addEventListener('click', (e) => {
 });
 
 // Показываем лоадер сразу при загрузке страницы
-window.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', () => {
+    // Скрываем кнопки при загрузке
+    toggleEffectsButton(false);
+    toggleFullscreenButton(false);
+    
     drawCanvasLoader('Проверка авторизации…');
     // Таймер: если через 5 секунд пользователь не определён — показать кнопки авторизации
     setTimeout(() => {
@@ -264,13 +277,13 @@ let totalScroll = 0; // Track total scroll amount
 let platformTouched = false; // Track if platform was touched
 let highestPoint = 0; // Track highest point reached
 let canScore = false; // Track if we can score points
-const PIXELS_PER_METER = 10; // 10 пикселей = 1 метр
+const PIXELS_PER_METER = 100; // 100 пикселей = 1 метр
 let isMobile = window.innerWidth <= 500;
 
 // Настройки пружины
 const SPRING_CHANCE = 0.45; // 45% шанс появления пружины
 let lastSpringY = 0; // Последняя позиция пружины
-const SPRING_JUMP_FORCE = -25; // Увеличили силу прыжка от пружины
+const SPRING_JUMP_FORCE = -25; // Вернули исходную силу прыжка от пружины
 
 // Настройки джетпака
 const JETPACK_CHANCE = 0.05; // 5% шанс появления джетпака
@@ -278,13 +291,13 @@ const JETPACK_JUMP_FORCE = SPRING_JUMP_FORCE * 5; // В 5 раз выше, че�
 let jetpackActive = false;
 let jetpackTimer = 0;
 const JETPACK_DURATION = 1.2; // длительность эффекта в секундах
-const JETPACK_POWER = -60;    // постоянная высокая скорость вверх
+const JETPACK_POWER = -60;    // вернули исходную скорость вверх
 let jetpackFlameTimer = 0;
 const JETPACK_FLAME_FADE = 0.5; // секунды затухания
 
 // Платформы
 let platforms = [];
-const platformWidth = isMobile ? 60 : 70; // Меньше на мобильных устройствах
+const platformWidth = isMobile ? 80 : 100; // Увеличили с 60/70 до 80/100
 const platformHeight = 20;
 const platformGap = isMobile ? 130 : 150; // Меньше на мобильных устройствах
 const SPRING_MIN_DISTANCE = platformGap - 10; // чуть меньше шага платформ
@@ -293,16 +306,16 @@ const SPRING_MIN_DISTANCE = platformGap - 10; // чуть меньше шага 
 const player = {
     x: 0,
     y: 0,
-    width: isMobile ? 30 : 40, // Меньше на мобильных устройствах
+    width: isMobile ? 30 : 40,
     height: isMobile ? 30 : 40,
     velocityY: 0,
     velocityX: 0,
-    speed: isMobile ? 4 : 5, // Немного медленнее на мобильных устройствах
-    jumpForce: -13
+    speed: isMobile ? 4 : 5,
+    jumpForce: -13 // Вернули исходную силу прыжка
 };
 
 let lastFrameTime = performance.now();
-const BASE_FPS = 75;
+const BASE_FPS = 75; // Вернули к исходному значению
 let targetVelocityX = 0; // Для плавного управления на мобилке
 let targetX = null;
 
@@ -321,7 +334,45 @@ let recordPulseTime = 0;
 // Добавляем переменные для отслеживания изменений
 let lastLayerIndex = -1;
 let layerTransitionTimer = 0;
-const LAYER_TRANSITION_DURATION = 2; // секунды
+const LAYER_TRANSITION_FRAMES = 600; // Примерно 10 секунд при 60 FPS
+let lastShownAchievement = 0;
+let currentMessage = null;
+let messageQueue = []; // Очередь сообщений
+
+// Функция для создания частиц эмодзи
+function createEmojiParticles(emoji, count = 10) {
+    for (let i = 0; i < count; i++) {
+        emojiParticles.push({
+            x: Math.random() * canvas.width,
+            y: -50, // Начинаем сверху экрана
+            emoji: emoji,
+            size: 20 + Math.random() * 20, // Размер от 20 до 40
+            rotation: Math.random() * Math.PI * 2, // Случайный угол поворота
+            rotationSpeed: (Math.random() - 0.5) * 0.1, // Скорость вращения
+            speed: 2 + Math.random() * 3, // Скорость падения
+            wobble: Math.random() * 0.1, // Амплитуда колебаний
+            wobbleSpeed: Math.random() * 0.1, // Скорость колебаний
+            wobbleOffset: Math.random() * Math.PI * 2, // Смещение фазы колебаний
+            alpha: 1
+        });
+    }
+}
+
+// Функция для управления видимостью кнопки эффектов
+function toggleEffectsButton(show) {
+    const effectsBtn = document.getElementById('effectsBtn');
+    if (effectsBtn) {
+        effectsBtn.style.display = show ? 'block' : 'none';
+    }
+}
+
+// Функция для управления видимостью кнопки полноэкранного режима
+function toggleFullscreenButton(show) {
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+    if (fullscreenBtn) {
+        fullscreenBtn.style.display = show ? 'block' : 'none';
+    }
+}
 
 function createDust(x, y) {
     for (let i = 0; i < 10; i++) {
@@ -339,6 +390,19 @@ function createDust(x, y) {
 
 // Инициализация игры
 function init() {
+    const canvas = document.getElementById('gameCanvas');
+    if (!canvas) {
+        console.error('Canvas element not found during initialization');
+        return;
+    }
+
+    // Инициализируем контекст canvas
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+        console.error('Could not get canvas context');
+        return;
+    }
+
     isGameOver = false;
     isPaused = false;
     isNewRecord = false;
@@ -346,11 +410,15 @@ function init() {
     recordPulseTime = 0;
     lastLayerIndex = -1;
     layerTransitionTimer = 0;
+    lastShownAchievement = 0;
+    currentMessage = null;
+    messageQueue = []; // Очищаем очередь сообщений
+    toggleEffectsButton(false);
+    toggleFullscreenButton(true);
     resizeCanvas();
     generatePlatforms();
     setupPlayer();
     setupEventListeners();
-    // Устанавливаем начальный фон
     updateBackground(0);
     canvas.style.background = getCurrentGradient();
     gameLoop();
@@ -428,6 +496,12 @@ function setupPlayer() {
 
 // Обработчики событий
 function setupEventListeners() {
+    const canvas = document.getElementById('gameCanvas');
+    if (!canvas) {
+        console.error('Canvas element not found');
+        return;
+    }
+
     window.addEventListener('resize', () => {
         resizeCanvas();
         // Перерисовываем текущий фон после изменения размера
@@ -436,53 +510,57 @@ function setupEventListeners() {
     
     // Обработчик кликов для canvas
     function handleCanvasClick(e) {
-        if (!canvas) return; // Проверка на существование canvas
+        if (!canvas) return;
         
-        const rect = canvas.getBoundingClientRect();
-        const scale = Math.min(rect.width / canvas.width, rect.height / canvas.height);
-        const offsetX = (rect.width - canvas.width * scale) / 2;
-        const offsetY = (rect.height - canvas.height * scale) / 2;
-        
-        const clickX = (e.clientX - rect.left - offsetX) / scale;
-        const clickY = (e.clientY - rect.top - offsetY) / scale;
-
-        if (isGameOver) {
-            if (gameOverAnimationId) {
-                cancelAnimationFrame(gameOverAnimationId);
-                gameOverAnimationId = null;
-            }
-            restart();
-            return;
-        }
-        
-        if (isPaused) {
-            const cx = canvas.width / 2;
-            const cy = canvas.height / 2;
-            const r = 60;
-
-            const playDist = Math.sqrt(
-                Math.pow(clickX - cx, 2) +
-                Math.pow(clickY - cy, 2)
-            );
-            if (playDist <= r) {
-                isPaused = false;
-                lastFrameTime = performance.now();
-                gameLoop();
-                return;
-            }
-        } else {
-            // Проверяем клик по кнопке паузы
-            const pauseBtnX = canvas.width - PAUSE_BTN_SIZE / 2 - PAUSE_BTN_MARGIN;
-            const pauseBtnY = PAUSE_BTN_SIZE / 2 + PAUSE_BTN_MARGIN;
-            const pauseDistance = Math.sqrt(
-                Math.pow(clickX - pauseBtnX, 2) + 
-                Math.pow(clickY - pauseBtnY, 2)
-            );
+        try {
+            const rect = canvas.getBoundingClientRect();
+            const scale = Math.min(rect.width / canvas.width, rect.height / canvas.height);
+            const offsetX = (rect.width - canvas.width * scale) / 2;
+            const offsetY = (rect.height - canvas.height * scale) / 2;
             
-            if (pauseDistance <= PAUSE_BTN_SIZE / 2) {
-                isPaused = true;
+            const clickX = (e.clientX - rect.left - offsetX) / scale;
+            const clickY = (e.clientY - rect.top - offsetY) / scale;
+
+            if (isGameOver) {
+                if (gameOverAnimationId) {
+                    cancelAnimationFrame(gameOverAnimationId);
+                    gameOverAnimationId = null;
+                }
+                restart();
                 return;
             }
+            
+            if (isPaused) {
+                const cx = canvas.width / 2;
+                const cy = canvas.height / 2;
+                const r = 60;
+
+                const playDist = Math.sqrt(
+                    Math.pow(clickX - cx, 2) +
+                    Math.pow(clickY - cy, 2)
+                );
+                if (playDist <= r) {
+                    isPaused = false;
+                    lastFrameTime = performance.now();
+                    gameLoop();
+                    return;
+                }
+            } else {
+                // Проверяем клик по кнопке паузы
+                const pauseBtnX = canvas.width - PAUSE_BTN_SIZE / 2 - PAUSE_BTN_MARGIN;
+                const pauseBtnY = PAUSE_BTN_SIZE / 2 + PAUSE_BTN_MARGIN;
+                const pauseDistance = Math.sqrt(
+                    Math.pow(clickX - pauseBtnX, 2) + 
+                    Math.pow(clickY - pauseBtnY, 2)
+                );
+                
+                if (pauseDistance <= PAUSE_BTN_SIZE / 2) {
+                    isPaused = true;
+                    return;
+                }
+            }
+        } catch (error) {
+            console.error('Error handling canvas click:', error);
         }
     }
 
@@ -494,23 +572,27 @@ function setupEventListeners() {
     function handleTouchStart(e) {
         if (!canvas) return;
         
-        if (isGameOver) {
-            if (gameOverAnimationId) {
-                cancelAnimationFrame(gameOverAnimationId);
-                gameOverAnimationId = null;
+        try {
+            if (isGameOver) {
+                if (gameOverAnimationId) {
+                    cancelAnimationFrame(gameOverAnimationId);
+                    gameOverAnimationId = null;
+                }
+                restart();
+                return;
             }
-            restart();
-            return;
-        }
-        
-        const rect = canvas.getBoundingClientRect();
-        const touchX = e.touches[0].clientX - rect.left;
-        const screenCenter = rect.width / 2;
-        
-        if (touchX > screenCenter) {
-            player.velocityX = player.speed;
-        } else {
-            player.velocityX = -player.speed;
+            
+            const rect = canvas.getBoundingClientRect();
+            const touchX = e.touches[0].clientX - rect.left;
+            const screenCenter = rect.width / 2;
+            
+            if (touchX > screenCenter) {
+                player.velocityX = player.speed;
+            } else {
+                player.velocityX = -player.speed;
+            }
+        } catch (error) {
+            console.error('Error handling touch start:', error);
         }
     }
 
@@ -527,25 +609,56 @@ function setupEventListeners() {
 
     // Keyboard controls
     function handleKeyDown(e) {
-        if (isGameOver) return;
-        if(e.key === 'ArrowLeft') player.velocityX = -player.speed;
-        if(e.key === 'ArrowRight') player.velocityX = player.speed;
+        try {
+            if (isGameOver || !canvas) return;
+            
+            // Проверяем, что событие пришло от клавиатуры
+            if (e.type === 'keydown') {
+                if(e.key === 'ArrowLeft') {
+                    player.velocityX = -player.speed;
+                }
+                if(e.key === 'ArrowRight') {
+                    player.velocityX = player.speed;
+                }
+            }
+        } catch (error) {
+            console.error('Error handling key down:', error);
+        }
     }
 
     function handleKeyUp(e) {
-        if (isGameOver) return;
-        if(e.key === 'ArrowLeft' || e.key === 'ArrowRight') player.velocityX = 0;
+        try {
+            if (isGameOver || !canvas) return;
+            
+            // Проверяем, что событие пришло от клавиатуры
+            if (e.type === 'keyup') {
+                if(e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                    player.velocityX = 0;
+                }
+            }
+        } catch (error) {
+            console.error('Error handling key up:', error);
+        }
     }
 
+    // Удаляем старые обработчики перед добавлением новых
     document.removeEventListener('keydown', handleKeyDown);
     document.removeEventListener('keyup', handleKeyUp);
-    document.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('keyup', handleKeyUp);
+    
+    // Добавляем обработчики только если canvas существует
+    if (canvas) {
+        document.addEventListener('keydown', handleKeyDown);
+        document.addEventListener('keyup', handleKeyUp);
+    }
 
     // Автоматическая пауза при сворачивании вкладки
     function handleVisibilityChange() {
-        if (document.hidden && !isGameOver) {
-            isPaused = true;
+        try {
+            if (document.hidden && !isGameOver && canvas) {
+                isPaused = true;
+            }
+        } catch (error) {
+            console.error('Error handling visibility change:', error);
         }
     }
 
@@ -568,33 +681,28 @@ function checkCollision(rect1, rect2) {
            rect1.y + rect1.height > rect2.y;
 }
 
-// Обновление счета
+// Функция для обновления счета
 function updateScore() {
-    // Общая высота = прокрутка + текущая видимая высота
-    const totalHeight = totalScroll + (canvas.height - player.y);
+    // Используем totalScroll для подсчета общей пройденной высоты
+    const totalHeight = totalScroll;
+    highestPoint = Math.max(totalHeight, highestPoint);
+    const meters = Math.floor(totalHeight / PIXELS_PER_METER);
     
-    if (totalHeight > highestPoint) {
-        highestPoint = totalHeight;
-        // Конвертируем пиксели в метры
-        const meters = Math.floor(highestPoint / PIXELS_PER_METER);
+    if (meters !== score) {
         score = meters;
-        
-        if (score > highScore) {
-            highScore = score;
-            isNewRecord = true;
-            recordBeatenThisRun = true;
-            // Сохраняем рекорд только в Firestore
-            if (window.firebaseUserId) {
-                saveHighScore(window.firebaseUserId, highScore);
-            }
-        } else {
-            isNewRecord = false;
+        const newMessage = getAchievementMessage(meters);
+        if (newMessage) {
+            currentMessage = newMessage;
+            layerTransitionTimer = LAYER_TRANSITION_FRAMES;
         }
     }
 }
 
 // Показ экрана окончания игры
 function showGameOver() {
+    // Скрываем кнопку полноэкранного режима
+    toggleFullscreenButton(false);
+    
     // Устанавливаем состояние перед первым показом
     isGameOver = true;
     recordBeatenThisRun = false;
@@ -657,6 +765,10 @@ function restart() {
     jetpackActive = false;
     jetpackTimer = 0;
     jetpackFlameTimer = 0;
+    lastShownAchievement = 0;
+    currentMessage = null;
+    messageQueue = []; // Очищаем очередь сообщений
+    clearEmojiParticles();
     
     // Сбрасываем состояние игрока
     player.velocityY = 0;
@@ -675,9 +787,14 @@ function restart() {
     updateBackground(0);
     canvas.style.background = getCurrentGradient();
     
+    // Показываем кнопки
+    toggleEffectsButton(false);
+    toggleFullscreenButton(true);
+    
     // Запускаем игру
     lastFrameTime = performance.now();
     requestAnimationFrame(gameLoop);
+    resetMessages();
 }
 
 // Основной игровой цикл
@@ -688,6 +805,9 @@ function gameLoop() {
     }
 
     if (isPaused) {
+        // Показываем кнопку эффектов во время паузы
+        toggleEffectsButton(true);
+        
         // Обычный экран паузы
         ctx.fillStyle = 'rgba(0,0,0,0.5)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -729,6 +849,9 @@ function gameLoop() {
         ctx.restore();
 
         return;
+    } else {
+        // Скрываем кнопку эффектов когда игра активна
+        toggleEffectsButton(false);
     }
 
     const now = performance.now();
@@ -774,11 +897,11 @@ function gameLoop() {
     // Проверяем, изменился ли слой
     if (currentLayerIndex !== lastLayerIndex) {
         lastLayerIndex = currentLayerIndex;
-        layerTransitionTimer = LAYER_TRANSITION_DURATION;
+        layerTransitionTimer = LAYER_TRANSITION_FRAMES;
     }
     
     // Применяем текущий градиент
-    canvas.style.background = getCurrentGradient();
+    canvas.style.background = getCurrentGradient(score);
 
     // Удаление платформ ниже экрана
     platforms = platforms.filter(platform => platform.y < canvas.height);
@@ -877,7 +1000,7 @@ function gameLoop() {
     ctx.fillStyle = '#fff';
     ctx.shadowColor = '#000';
     ctx.shadowBlur = 8;
-    ctx.fillText(score, canvas.width / 2, 18);
+    ctx.fillText(`${score}м`, canvas.width / 2, 18);
     ctx.shadowBlur = 0;
     ctx.restore();
 
@@ -943,46 +1066,70 @@ function gameLoop() {
         if (p.alpha <= 0) dustParticles.splice(i, 1);
     }
 
-    // Показываем название текущего слоя
-    if (layerTransitionTimer > 0) {
-        const currentLayer = getCurrentLayerDescription(score);
-        const alpha = Math.min(1, layerTransitionTimer * 2); // Плавное появление
+    // Показываем сообщения из очереди
+    const message = getNextMessage();
+    if (message) {
+        const alpha = getMessageAlpha();
         ctx.save();
         
         // Настраиваем стиль текста
-        ctx.font = 'bold 20px Arial';
+        ctx.font = isMobile ? 'bold 18px Arial' : 'bold 24px Arial';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
         ctx.shadowColor = '#000';
-        ctx.shadowBlur = 8;
+        ctx.shadowBlur = 16;
+        ctx.shadowOffsetY = 3;
         
         // Разбиваем текст на две строки
-        const [meters, description] = currentLayer.split('! ');
+        const words = message.split(' ');
+        const firstLine = words.slice(0, 3).join(' ');
+        const secondLine = words.slice(3).join(' ');
         
-        // Рисуем первую строку (метры)
-        ctx.fillText(meters + '!', canvas.width / 2, canvas.height / 2 - 120);
-        
-        // Рисуем вторую строку (описание)
-        ctx.font = '18px Arial'; // Уменьшаем размер шрифта для описания
-        ctx.fillText(description, canvas.width / 2, canvas.height / 2 - 90);
+        // Рисуем сообщение в две строки под счетом
+        ctx.fillText(firstLine, canvas.width / 2, 60);
+        ctx.fillText(secondLine, canvas.width / 2, 90);
         
         ctx.restore();
-        layerTransitionTimer -= delta;
+        updateMessageTimer();
     }
+
+    // Обновляем и рисуем частицы эмодзи
+    updateEmojiParticles(ctx);
 
     requestAnimationFrame(gameLoop);
 }
 
 // Создаем визуальный эффект пружины
 function createSpringEffect(x, y) {
+    // Создаем частицы для эффекта пружины
+    for (let i = 0; i < 8; i++) {
+        dustParticles.push({
+            x: x + (Math.random() - 0.5) * 20,
+            y: y - 5,
+            vx: (Math.random() - 0.5) * 4,
+            vy: -Math.random() * 8 - 4,
+            alpha: 1,
+            size: 4 + Math.random() * 4,
+            color: '#FFD700' // Золотой цвет для пружины
+        });
+    }
+
     // Анимация сжатия пружины
+    ctx.save();
     ctx.fillStyle = '#FFD700';
+    ctx.shadowColor = '#FFA500';
+    ctx.shadowBlur = 10;
+    
+    // Рисуем пружину в сжатом состоянии
     ctx.fillRect(x - 10, y - 5, 20, 5);
-    setTimeout(() => {
-        ctx.fillStyle = '#FFD700';
-        ctx.fillRect(x - 10, y - 10, 20, 10);
-    }, 50);
+    
+    // Добавляем блики
+    ctx.fillStyle = '#FFF';
+    ctx.globalAlpha = 0.5;
+    ctx.fillRect(x - 8, y - 4, 16, 2);
+    
+    ctx.restore();
 }
 
 // Визуальный эффект для джетпака
@@ -1027,4 +1174,24 @@ async function loadHighScore(userId) {
   } catch (e) {
     return 0;
   }
-} 
+}
+
+// Добавляем обработчик для кнопки эффектов
+document.getElementById('effectsBtn').addEventListener('click', () => {
+    const effectsEnabled = toggleEffects();
+    const effectsBtn = document.getElementById('effectsBtn');
+    if (effectsEnabled) {
+        effectsBtn.classList.remove('disabled');
+    } else {
+        effectsBtn.classList.add('disabled');
+    }
+});
+
+export {
+    startGameWithUser,
+    restart,
+    toggleEffectsButton,
+    toggleFullscreenButton,
+    saveHighScore,
+    loadHighScore
+}; 
